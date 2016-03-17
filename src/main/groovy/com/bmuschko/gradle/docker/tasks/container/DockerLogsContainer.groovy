@@ -16,6 +16,10 @@ class DockerLogsContainer extends DockerExistingContainer {
     @Optional
     Boolean showTimestamps
 
+    @Input
+    @Optional
+    Date since
+
     Class loadClass(String className) {
         Thread.currentThread().contextClassLoader.loadClass(className)
     }
@@ -80,7 +84,9 @@ class DockerLogsContainer extends DockerExistingContainer {
             logsCommand.withTail(count)
         }
 
-        //TODO: logsCommand.withSince(Integer since)
+        if (since != null) {
+            logsCommand.withSince((int) (since.time / 1000))
+        }
     }
 }
 

@@ -68,5 +68,54 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
         BuildResult result = build('workflow')
         result.output.contains("Hello World")
     }
+
+    def "Container logs are limited by the since parameter"() {
+        buildFile << """
+            import com.bmuschko.gradle.docker.tasks.image.DockerPullImage
+            import com.bmuschko.gradle.docker.tasks.container.DockerCreateContainer
+            import com.bmuschko.gradle.docker.tasks.container.DockerStartContainer
+            import com.bmuschko.gradle.docker.tasks.container.DockerRemoveContainer
+            import com.bmuschko.gradle.docker.tasks.container.DockerLogsContainer
+
+            task pullImage(type: DockerPullImage) {
+                repository = 'busybox'
+                tag = 'latest'
+            }
+
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+            }
+
+            task startContainer(type: DockerStartContainer) {
+                dependsOn createContainer
+                targetContainerId { createContainer.getContainerId() }
+            }
+
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
+                follow = true
+                tail = true
+                since = new Date()+1
+            }
+
+            task removeContainer(type: DockerRemoveContainer) {
+                dependsOn logContainer
+                removeVolumes = true
+                force = true
+                targetContainerId { startContainer.getContainerId() }
+            }
+
+            task workflow {
+                dependsOn removeContainer
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        !result.output.contains("Hello World")
+    }
 }
 
