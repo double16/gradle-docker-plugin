@@ -16,21 +16,38 @@ class DockerLogsContainer extends DockerExistingContainer {
     @Optional
     Boolean showTimestamps
 
+    Class loadClass(String className) {
+        Thread.currentThread().contextClassLoader.loadClass(className)
+    }
+
     private createLoggingCallback() {
-      def callbackClass = Thread.currentThread().contextClassLoader.loadClass("com.github.dockerjava.core.command.LogContainerResultCallback")
-      System.err.println "callback class is ${callbackClass.name}"
-      def callback = [onNext: { frame ->
-          switch (frame.streamType as String) {
-            case "STDOUT":
-            case "RAW":
-                System.out.print(frame.payload)
-                break
-            case "STDERR":
-                System.err.print(frame.payload)
-                break
-          }
-      }].asType(callbackClass)
-      System.err.println "${callback.class.name} -> ${callback.class.superclass.name}"
+        Class callbackClass = loadClass("com.github.dockerjava.core.command.LogContainerResultCallback")
+        def delegate = callbackClass.newInstance()
+
+        Class enhancerClass = loadClass('net.sf.cglib.proxy.Enhancer')
+        def enhancer = enhancerClass.getConstructor().newInstance()
+        enhancer.setSuperclass(callbackClass)
+        enhancer.setCallback([
+
+            invoke: {Object proxy, java.lang.reflect.Method method, Object[] args ->
+                if ("onNext" == method.name) {
+                  def frame = args[0]
+                  switch (frame.streamType as String) {
+                    case "STDOUT":
+                    case "RAW":
+                        System.out.print(new String(frame.payload))
+                        break
+                    case "STDERR":
+                        System.err.print(new String(frame.payload))
+                        break
+                  }
+                }
+                method.invoke(delegate, args)
+            }
+
+        ].asType(loadClass('net.sf.cglib.proxy.InvocationHandler')))
+
+        enhancer.create()
     }
 
     @Override
@@ -43,7 +60,6 @@ class DockerLogsContainer extends DockerExistingContainer {
 
     private void setContainerCommandConfig(logsCommand) {
         if (follow != null) {
-            logger.info "Following stream = ${follow}"
             logsCommand.withFollowStream(follow)
         }
 
