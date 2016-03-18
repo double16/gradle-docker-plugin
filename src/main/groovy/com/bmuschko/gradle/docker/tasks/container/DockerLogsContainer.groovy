@@ -83,42 +83,12 @@ class DockerLogsContainer extends DockerExistingContainer {
     @Optional
     Date since
 
-    private createLoggingCallback() {
-        Class callbackClass = threadContextClassLoader.loadClass("com.github.dockerjava.core.command.LogContainerResultCallback")
-        def delegate = callbackClass.newInstance()
-
-        Class enhancerClass = threadContextClassLoader.loadClass('net.sf.cglib.proxy.Enhancer')
-        def enhancer = enhancerClass.getConstructor().newInstance()
-        enhancer.setSuperclass(callbackClass)
-        enhancer.setCallback([
-
-            invoke: {Object proxy, java.lang.reflect.Method method, Object[] args ->
-                if ("onNext" == method.name) {
-                  def frame = args[0]
-                  switch (frame.streamType as String) {
-                    case "STDOUT":
-                    case "RAW":
-                        System.out.print(new String(frame.payload))
-                        break
-                    case "STDERR":
-                        System.err.print(new String(frame.payload))
-                        break
-                  }
-                }
-                method.invoke(delegate, args)
-            }
-
-        ].asType(threadContextClassLoader.loadClass('net.sf.cglib.proxy.InvocationHandler')))
-
-        enhancer.create()
-    }
-
     @Override
     void runRemoteCommand(dockerClient) {
-        logger.info "Logs for container with ID '${getContainerId()}'."
+        logger.quiet "Logs for container with ID '${getContainerId()}'."
         def logCommand = dockerClient.logContainerCmd(getContainerId())
         setContainerCommandConfig(logCommand)
-        logCommand.exec(createLoggingCallback())?.awaitCompletion()
+        logCommand.exec(threadContextClassLoader.createLoggingCallback())?.awaitCompletion()
     }
 
     private void setContainerCommandConfig(logsCommand) {
