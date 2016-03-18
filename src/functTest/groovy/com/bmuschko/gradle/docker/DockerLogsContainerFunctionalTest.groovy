@@ -21,7 +21,7 @@ import spock.lang.Requires
 
 @Requires({ TestPrecondition.DOCKER_SERVER_INFO_URL_REACHABLE })
 class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
-    def "Can start a container and watch logs"() {
+    def setup() {
         buildFile << """
             import com.bmuschko.gradle.docker.tasks.image.DockerPullImage
             import com.bmuschko.gradle.docker.tasks.container.DockerCreateContainer
@@ -34,12 +34,6 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
                 tag = 'latest'
             }
 
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
-            }
-
             task startContainer(type: DockerStartContainer) {
                 dependsOn createContainer
                 targetContainerId { createContainer.getContainerId() }
@@ -49,7 +43,7 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
                 dependsOn startContainer
                 targetContainerId { startContainer.getContainerId() }
                 follow = true
-                tail = true
+                tailAll = true
             }
 
             task removeContainer(type: DockerRemoveContainer) {
@@ -61,6 +55,17 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
             task workflow {
                 dependsOn removeContainer
+            }
+        """
+
+    }
+
+    def "Can start a container and watch logs"() {
+        buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
             }
         """
 
@@ -71,51 +76,108 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "Container logs are limited by the since parameter"() {
         buildFile << """
-            import com.bmuschko.gradle.docker.tasks.image.DockerPullImage
-            import com.bmuschko.gradle.docker.tasks.container.DockerCreateContainer
-            import com.bmuschko.gradle.docker.tasks.container.DockerStartContainer
-            import com.bmuschko.gradle.docker.tasks.container.DockerRemoveContainer
-            import com.bmuschko.gradle.docker.tasks.container.DockerLogsContainer
-
-            task pullImage(type: DockerPullImage) {
-                repository = 'busybox'
-                tag = 'latest'
-            }
-
             task createContainer(type: DockerCreateContainer) {
                 dependsOn pullImage
                 targetImageId { pullImage.repository+":"+pullImage.tag }
                 cmd = ['/bin/sh','-c',"echo Hello World"]
-            }
-
-            task startContainer(type: DockerStartContainer) {
-                dependsOn createContainer
-                targetContainerId { createContainer.getContainerId() }
-            }
-
-            task logContainer(type: DockerLogsContainer) {
-                dependsOn startContainer
-                targetContainerId { startContainer.getContainerId() }
-                follow = true
-                tail = true
-                since = new Date()+1
-            }
-
-            task removeContainer(type: DockerRemoveContainer) {
-                dependsOn logContainer
-                removeVolumes = true
-                force = true
-                targetContainerId { startContainer.getContainerId() }
-            }
-
-            task workflow {
-                dependsOn removeContainer
             }
         """
 
         expect:
         BuildResult result = build('workflow')
         !result.output.contains("Hello World")
+    }
+
+    def "tailAll = false should have no output"() {
+        buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+                tailAll = false
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        !result.output.contains("Hello World")
+    }
+
+    def "tailAll = true should have all output"() {
+        buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+                tailAll = true
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        result.output.contains("Hello World")
+    }
+
+    def "tailAll and tailCount cannot be specified together"() {
+       buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+                tailAll = true
+                tailCount = 20
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        result.rethrowFailure()
+    }
+
+    def "tailCount = 0 should have no output"() {
+        buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+                tailCount = 0
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        !result.output.contains("Hello World")
+    }
+
+    def "tailCount = 1 should have output"() {
+        buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+                tailCount = 1
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        result.output.contains("Hello World")
+    }
+
+    def "showTimestamps works"() {
+        buildFile << """
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+                tailAll = true
+                showTimestamps = true
+            }
+        """
+
+        expect:
+        BuildResult result = build('workflow')
+        result.output ==~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].*Hello World/
     }
 }
 
