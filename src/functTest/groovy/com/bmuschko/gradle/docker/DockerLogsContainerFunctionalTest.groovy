@@ -15,7 +15,6 @@
  */
 package com.bmuschko.gradle.docker
 
-import org.gradle.api.GradleException
 import org.gradle.testkit.runner.BuildResult
 import spock.lang.Requires
 
@@ -34,20 +33,19 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
                 tag = 'latest'
             }
 
+            task createContainer(type: DockerCreateContainer) {
+                dependsOn pullImage
+                targetImageId { pullImage.repository+":"+pullImage.tag }
+                cmd = ['/bin/sh','-c',"echo Hello World"]
+            }
+
             task startContainer(type: DockerStartContainer) {
                 dependsOn createContainer
                 targetContainerId { createContainer.getContainerId() }
             }
 
-            task logContainer(type: DockerLogsContainer) {
-                dependsOn startContainer
-                targetContainerId { startContainer.getContainerId() }
-                follow = true
-                tailAll = true
-            }
-
-            task removeContainer(type: DockerRemoveContainer) {
-                dependsOn logContainer
+           task removeContainer(type: DockerRemoveContainer) {
+                dependsOn 'logContainer'
                 removeVolumes = true
                 force = true
                 targetContainerId { startContainer.getContainerId() }
@@ -62,10 +60,11 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "Can start a container and watch logs"() {
         buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
+                follow = true
+                tailAll = true
             }
         """
 
@@ -76,25 +75,10 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "Container logs are limited by the since parameter"() {
         buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
-            }
-        """
-
-        expect:
-        BuildResult result = build('workflow')
-        !result.output.contains("Hello World")
-    }
-
-    def "tailAll = false should have no output"() {
-        buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
-                tailAll = false
+             task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
+                since = new Date()+1
             }
         """
 
@@ -105,10 +89,9 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "tailAll = true should have all output"() {
         buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
                 tailAll = true
             }
         """
@@ -120,26 +103,23 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "tailAll and tailCount cannot be specified together"() {
        buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
                 tailAll = true
                 tailCount = 20
             }
         """
 
         expect:
-        BuildResult result = build('workflow')
-        result.rethrowFailure()
+        BuildResult result = buildAndFail('workflow')
     }
 
     def "tailCount = 0 should have no output"() {
         buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
                 tailCount = 0
             }
         """
@@ -151,10 +131,9 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "tailCount = 1 should have output"() {
         buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
                 tailCount = 1
             }
         """
@@ -166,10 +145,9 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
     def "showTimestamps works"() {
         buildFile << """
-            task createContainer(type: DockerCreateContainer) {
-                dependsOn pullImage
-                targetImageId { pullImage.repository+":"+pullImage.tag }
-                cmd = ['/bin/sh','-c',"echo Hello World"]
+            task logContainer(type: DockerLogsContainer) {
+                dependsOn startContainer
+                targetContainerId { startContainer.getContainerId() }
                 tailAll = true
                 showTimestamps = true
             }
@@ -177,7 +155,7 @@ class DockerLogsContainerFunctionalTest extends AbstractFunctionalTest {
 
         expect:
         BuildResult result = build('workflow')
-        result.output ==~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].*Hello World/
+        result.output ==~ ~/(?s).*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][.][0-9]+Z\s+Hello World.*/
     }
 }
 

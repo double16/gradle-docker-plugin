@@ -15,7 +15,7 @@
  */
 package com.bmuschko.gradle.docker.tasks.container
 
-import org.gradle.api.GradleException
+import org.gradle.api.InvalidUserDataException
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 
@@ -34,7 +34,8 @@ class DockerLogsContainer extends DockerExistingContainer {
 
     /**
      * Set to true to copy all output since the container has started. For long running containers or containers
-     * with a lot of output this could take a long time. This cannot be set if #tailCount is also set.
+     * with a lot of output this could take a long time. This cannot be set if #tailCount is also set. Setting to false
+     * leaves the decision of how many lines to copy to docker.
      * Default is unspecified (docker defaults to true).
      */
     @Input
@@ -132,7 +133,7 @@ class DockerLogsContainer extends DockerExistingContainer {
         logsCommand.withStdOut(getStdOut()).withStdErr(getStdErr())
 
         if (getTailAll() != null && getTailCount() != null) {
-            throw new GradleException("Conflicting parameters: only one of tailAll and tailCount can be specified")
+            throw new InvalidUserDataException("Conflicting parameters: only one of tailAll and tailCount can be specified")
         }
 
         if (getTailAll() != null) {
