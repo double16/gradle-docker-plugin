@@ -343,7 +343,7 @@ class DockerThreadContextClassLoader implements ThreadContextClassLoader {
      * {@inheritDoc}
      */
     @Override
-    def createLoggingCallback() {
+    def createLoggingCallback(Logger logger) {
         Class callbackClass = loadClass("${COMMAND_PACKAGE}.LogContainerResultCallback")
         def delegate = callbackClass.getConstructor().newInstance()
 
@@ -358,10 +358,10 @@ class DockerThreadContextClassLoader implements ThreadContextClassLoader {
                   switch (frame.streamType as String) {
                     case "STDOUT":
                     case "RAW":
-                        System.out.print(new String(frame.payload))
+                        logger.quiet(new String(frame.payload))
                         break
                     case "STDERR":
-                        System.err.print(new String(frame.payload))
+                        logger.error(new String(frame.payload))
                         break
                   }
                 }

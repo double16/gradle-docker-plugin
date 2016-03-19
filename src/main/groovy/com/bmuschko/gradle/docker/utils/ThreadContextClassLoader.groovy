@@ -226,5 +226,5 @@ interface ThreadContextClassLoader {
      *
      * @return Callback instance
      */
-    def createLoggingCallback()
+    def createLoggingCallback(Logger logger)
 }
